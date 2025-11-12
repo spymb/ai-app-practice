@@ -1,0 +1,8 @@
+{
+  "name": "01-chatbot-cli",
+  "main": "main.ts",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file .env main.ts"
+  }
+}
