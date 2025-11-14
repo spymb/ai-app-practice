@@ -1,5 +1,5 @@
 {
-  "name": "01-chatbot-cli",
+  "name": "02-chatbot-cli-stream",
   "main": "main.ts",
   "type": "module",
   "scripts": {

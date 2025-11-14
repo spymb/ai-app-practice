@@ -1,0 +1,12 @@
+{
+  "name": "03-chatbot-cli-langchain",
+  "main": "main.ts",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file .env main.ts"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.0.5",
+    "@langchain/openai": "^1.1.1"
+  }
+}
