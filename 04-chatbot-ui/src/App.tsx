@@ -1,35 +1,201 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { ArrowRightIcon, Loader2Icon, SquareIcon } from "lucide-react";
+import { useKeyPress, useMount, useReactive } from "ahooks";
+import { useRef } from "react";
+
+import { cn } from "./lib/utils";
+import { sse, ssePost } from "./lib/sse";
+import type { ChatMessage } from "./types";
+import MessageItem from "./components/MessageItem";
 
 function App() {
-  const [count, setCount] = useState(0)
+  const state = useReactive({
+    messages: [] as ChatMessage[],
+    input: "",
+    isConnecting: false,
+    isReplying: false,
+    error: "",
+  });
+
+  const isWelcome = state.messages.length === 0;
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  /**
+   * 发送消息
+   */
+  const handleSend = async () => {
+    if (state.isConnecting) {
+      return;
+    }
+
+    // 如果正在回复，再次点击按钮则中断流
+    if (state.isReplying) {
+      abortControllerRef.current?.abort();
+    }
+
+    if (state.input.trim() === "") {
+      inputRef.current?.focus();
+      return;
+    }
+
+    try {
+      state.isConnecting = true;
+      state.error = "";
+
+      abortControllerRef.current = new AbortController();
+
+      // 创建 SSE 连接（EventSource GET 版本）
+      // const stream = await sse<ChatMessage>('/api/sse', {
+      //   signal: abortControllerRef.current.signal,
+      //   params: {
+      //     query: state.input.trim(),
+      //   },
+      // });
+
+      // 创建 SSE 连接（fetch POST）
+      const stream = await ssePost<ChatMessage>("/api/sse", {
+        signal: abortControllerRef.current!.signal,
+        params: {
+          query: state.input.trim(),
+        },
+      });
+
+      state.messages.push({
+        type: "user",
+        payload: { content: state.input },
+      });
+
+      state.input = "";
+      state.isConnecting = false;
+      state.isReplying = true;
+
+      // 接收 SSE 消息
+      for await (const message of stream) {
+        const lastMessage = state.messages.at(-1);
+
+        // 合并不完全消息
+        if (message.partial && lastMessage?.partial) {
+          lastMessage.payload.content += message.payload.content;
+          continue;
+        }
+
+        // 其他类型的消息
+        state.messages.push(message);
+      }
+
+      state.isReplying = false;
+    } catch (error: any) {
+      state.error = error.message;
+    } finally {
+      state.isReplying = false;
+      state.isConnecting = false;
+    }
+  };
+
+  // 监听输入框的回车事件
+  useKeyPress("Enter", handleSend, { target: inputRef });
+
+  /**
+   * 加载历史消息
+   */
+  useMount(async () => {
+    const response = await fetch("/api/history");
+    const messages = await response.json().catch(() => {});
+    state.messages = messages;
+
+    setTimeout(() => {
+      window.scrollTo({
+        top: document.body.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  });
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <main
+      className={cn(
+        "pb-28",
+        isWelcome && "flex h-screen flex-col justify-center"
+      )}
+    >
+      {/* 标题 */}
+      <section className="sticky left-0 top-0">
+        <h1
+          className={cn(
+            "md:w-3xl bg-background relative mx-auto p-4 text-3xl font-medium"
+          )}
+        >
+          {isWelcome ? "有什么可以帮忙的？" : "Chatbot UI"}
+        </h1>
+      </section>
+
+      {/* 聊天消息 */}
+      <section
+        className={cn(
+          "md:w-3xl mx-auto flex w-full flex-col justify-between px-4 pb-6 leading-relaxed"
+        )}
+      >
+        <div className="flex flex-1 flex-col gap-4">
+          {state.messages.map((message, index) => (
+            <MessageItem key={index} message={message} />
+          ))}
+        </div>
+
+        {/* 错误提示 */}
+        {state.error && (
+          <div className="mt-4 rounded bg-red-50 p-4 py-3 text-sm text-red-500">
+            {state.error}
+          </div>
+        )}
+      </section>
+
+      {/* 底部输入框 */}
+      <section
+        className={cn(
+          "bg-background md:w-3xl w-full p-4 pt-0",
+          isWelcome
+            ? "relative left-0 mx-auto -translate-x-0"
+            : "fixed bottom-0 left-1/2 -translate-x-1/2"
+        )}
+      >
+        <div
+          className={cn(
+            "relative flex flex-col gap-2 rounded-xl border-2 pb-10",
+            "bg-background focus-within:border-primary"
+          )}
+        >
+          <input
+            ref={inputRef}
+            className="h-11 resize-none px-3 outline-none"
+            autoFocus
+            value={state.input}
+            onChange={(e) => (state.input = e.target.value)}
+            disabled={state.isConnecting || state.isReplying}
+            placeholder="尽管问..."
+          />
+          <div
+            className={cn(
+              "absolute bottom-2 right-2 flex cursor-pointer justify-end rounded-full bg-black p-1.5 text-white",
+              state.isConnecting && "pointer-events-none bg-neutral-500"
+            )}
+            onClick={handleSend}
+          >
+            {/* 正在连接图标 */}
+            {state.isConnecting && (
+              <Loader2Icon size={16} className="animate-spin" />
+            )}
+            {/* 中断图标 */}
+            {state.isReplying && <SquareIcon size={16} />}
+            {/* 发送图标 */}
+            {!state.isConnecting && !state.isReplying && (
+              <ArrowRightIcon size={16} className="-rotate-90" />
+            )}
+          </div>
+        </div>
+      </section>
+    </main>
+  );
 }
 
-export default App
+export default App;

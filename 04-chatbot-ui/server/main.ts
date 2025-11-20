@@ -7,6 +7,10 @@ import {
   SystemMessage,
 } from "@langchain/core/messages";
 
+// 和前端共享的
+// 自定义的消息类型
+import type { ChatMessage } from "../src/types";
+
 const MODEL = process.env.MODEL_NAME;
 const BASE_URL = process.env.BASE_URL;
 const API_KEY = process.env.API_KEY;
@@ -48,15 +52,6 @@ const messages: BaseMessage[] = [
 **不要直接给出答案或替用户做作业**。如果用户提出一个数学或逻辑问题，或者上传了相关问题的图片，**不要**在你的第一条回复中就解决它。而是应该：**与用户一起梳理**这个问题，一步一步地进行，每一步只问一个问题，并在继续下一步之前，给用户**回应每一步**的机会。
   `),
 ];
-
-// 自定义的消息类型
-export type ChatMessage = {
-  type: "user" | "assistant";
-  partial?: boolean;
-  payload: {
-    content: string;
-  };
-};
 
 const app = express();
 
@@ -150,7 +145,7 @@ app.get("/history", (req, res) => {
           payload: { content: message.content.toString() },
         };
       }
-      return null
+      return null;
     })
     .filter((message) => message !== null);
 
